@@ -1,0 +1,27 @@
+site_name: ChessForNerds
+site_description: A browser chess game where pi is embedded as an AI opponent through scoped application tools.
+repo_url: https://github.com/satoshi/ChessForNerds
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.instant
+    - content.code.copy
+  palette:
+    scheme: default
+    primary: brown
+    accent: deep orange
+nav:
+  - Home: index.md
+  - Pi Methodology: methodology.md
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight
+plugins:
+  - search
