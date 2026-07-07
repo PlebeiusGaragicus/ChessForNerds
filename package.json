@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "concurrently \"npm:dev:server\" \"npm:dev:web\"",
+    "dev:fake": "CHESS_USE_FAKE_PI=1 npm run dev",
     "dev:server": "tsx watch server/src/index.ts",
     "dev:web": "vite --host 0.0.0.0 web",
     "build": "tsc -p server/tsconfig.json && vite build web",

@@ -1,6 +1,7 @@
 import { Chess, type Move, type Square } from "chess.js";
 import type {
   BoardPiece,
+  ChatMessage,
   GameStatus,
   LegalMove,
   MoveRecord,
@@ -17,6 +18,7 @@ interface MatchDoc {
   aiColor: PlayerColor;
   turnNumber: number;
   moveHistory: MoveRecord[];
+  chat: ChatMessage[];
   legalMenu: LegalMove[];
   aiThinking: boolean;
 }
@@ -87,10 +89,18 @@ export class ChessService {
       turnNumber: this.match.turnNumber,
       legalMoves,
       moveHistory: [...this.match.moveHistory],
-      chat: [],
+      chat: [...this.match.chat],
       aiThinking: this.match.aiThinking,
       aiEvents: []
     };
+  }
+
+  loadFen(fen: string): PublicMatchState {
+    this.match = {
+      ...this.createMatch(),
+      chess: new Chess(fen)
+    };
+    return this.getPublicState();
   }
 
   currentTurn(): PlayerColor {
@@ -166,6 +176,23 @@ export class ChessService {
     return move;
   }
 
+  appendChat(from: ChatMessage["from"], text: string): ChatMessage {
+    const cleaned = text.replace(/[^\S\r\n]+/g, " ").replace(/[\u0000-\u001f\u007f]/g, "").trim();
+    if (!cleaned) {
+      throw new Error("chat_rejected: message is empty.");
+    }
+
+    const message: ChatMessage = {
+      id: `chat${this.match.chat.length + 1}`,
+      from,
+      text: cleaned.slice(0, 200),
+      turnNumber: this.match.turnNumber,
+      createdAt: new Date().toISOString()
+    };
+    this.match.chat.push(message);
+    return message;
+  }
+
   renderVisibleState(color: PlayerColor): string {
     const rows = this.match.chess
       .board()
@@ -184,11 +211,17 @@ export class ChessService {
       })
       .join("\n");
     const lastMove = this.match.moveHistory.at(-1);
+    const recentChat = this.match.chat
+      .slice(-6)
+      .map((message) => `[${message.from}] ${message.text}`)
+      .join("\n");
     return [
       `match ${this.match.id}`,
       `you are ${color}; turn ${this.match.turnNumber}; side to move: ${this.currentTurn()}`,
       `status: ${this.status()}${this.match.chess.inCheck() ? " (check)" : ""}`,
       `last move: ${lastMove ? `${lastMove.color} ${lastMove.san}` : "none"}`,
+      "recent table talk:",
+      recentChat || "none",
       "board:",
       rows,
       "files: a b c d e f g h"
@@ -203,6 +236,7 @@ export class ChessService {
       aiColor: "black",
       turnNumber: 1,
       moveHistory: [],
+      chat: [],
       legalMenu: [],
       aiThinking: false
     };

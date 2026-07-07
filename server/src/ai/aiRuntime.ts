@@ -6,6 +6,7 @@ import { TurnTokenStore } from "./tokenStore.js";
 
 const AI_TURN_TIMEOUT_MS = 30_000;
 const AI_TOOLS = ["get_visible_state", "list_legal_moves", "submit_move"];
+const REAL_PI_TOOLS = ["submit_move"];
 
 export class AiRuntime {
   private activeTurn: Promise<void> | null = null;
@@ -42,7 +43,7 @@ export class AiRuntime {
       matchId: turn.id,
       player: turn.aiColor,
       turnNumber: turn.turnNumber,
-      allowedTools: AI_TOOLS,
+      allowedTools: process.env.CHESS_USE_FAKE_PI === "1" ? AI_TOOLS : REAL_PI_TOOLS,
       ttlMs: AI_TURN_TIMEOUT_MS + 5_000
     });
 
@@ -51,7 +52,7 @@ export class AiRuntime {
     this.events.publishAi("thinking", "Pi is thinking.");
 
     try {
-      const runner = process.env.CHESS_USE_REAL_PI === "1" ? runRealPiTurn : runFakePiTurn;
+      const runner = process.env.CHESS_USE_FAKE_PI === "1" ? runFakePiTurn : runRealPiTurn;
       await this.withTimeout(
         runner({ token: token.token, service: this.service, events: this.events, tokens: this.tokens }),
         AI_TURN_TIMEOUT_MS

@@ -25,34 +25,48 @@ async function request(path: string, init: RequestInit = {}) {
   return text;
 }
 
+function textResult(text: string) {
+  return {
+    content: [{ type: "text", text }]
+  };
+}
+
 const tools = {
   get_visible_state: {
     name: "get_visible_state",
+    label: "Visible State",
     description:
       "Return your current view of the chess match: board, side to move, check status, and last move.",
     parameters: Type.Object({}),
-    execute: async () => request("/api/ai/visible-state")
+    execute: async () => textResult(await request("/api/ai/visible-state"))
   },
   list_legal_moves: {
     name: "list_legal_moves",
+    label: "List Legal Moves",
     description:
       "Return every legal move for this turn. You must choose one listed move id for submit_move.",
     parameters: Type.Object({}),
-    execute: async () => request("/api/ai/legal-moves")
+    execute: async () => textResult(await request("/api/ai/legal-moves"))
   },
   submit_move: {
     name: "submit_move",
+    label: "Submit Move",
     description:
       "Commit exactly one move by id from list_legal_moves. This ends your turn. Include an optional short quip.",
     parameters: Type.Object({
       moveId: Type.String(),
       quip: Type.Optional(Type.String({ maxLength: 200 }))
     }),
-    execute: async ({ moveId, quip }: { moveId: string; quip?: string }) =>
-      request("/api/ai/submit-move", {
-        method: "POST",
-        body: JSON.stringify({ moveId, quip })
-      })
+    execute: async (
+      _toolCallId: string,
+      params: { moveId: string; quip?: string }
+    ) =>
+      textResult(
+        await request("/api/ai/submit-move", {
+          method: "POST",
+          body: JSON.stringify({ moveId: params.moveId, quip: params.quip })
+        })
+      )
   }
 };
 

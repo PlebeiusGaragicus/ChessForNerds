@@ -49,6 +49,24 @@ export function createMatchRouter(service: ChessService, events: EventHub, ai: A
     }
   });
 
+  router.post("/chat", (req, res) => {
+    const { text } = req.body as { text?: string };
+    if (!text) {
+      res.status(400).json({ error: "text is required." });
+      return;
+    }
+
+    try {
+      service.appendChat("human", text);
+      const state = stateWithEvents(service, events);
+      events.publishMatch(state);
+      res.json(state);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      res.status(400).json({ error: message });
+    }
+  });
+
   router.get("/events", (req, res) => {
     res.writeHead(200, {
       "Content-Type": "text/event-stream",

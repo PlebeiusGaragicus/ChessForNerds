@@ -35,6 +35,7 @@ function statusText(match: PublicMatchState): string {
 export function App() {
   const [match, setMatch] = useState<PublicMatchState | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
+  const [chatText, setChatText] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -81,6 +82,23 @@ export function App() {
       return;
     }
     setSelected(null);
+    setMatch(body as PublicMatchState);
+  }
+
+  async function submitChat(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError(null);
+    const response = await fetch("/api/match/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: chatText })
+    });
+    const body = await response.json();
+    if (!response.ok) {
+      setError(body.error ?? "Chat rejected.");
+      return;
+    }
+    setChatText("");
     setMatch(body as PublicMatchState);
   }
 
@@ -157,6 +175,26 @@ export function App() {
               </li>
             ))}
           </ol>
+
+          <h3>Table Talk</h3>
+          <form className="chat-form" onSubmit={submitChat}>
+            <input
+              value={chatText}
+              maxLength={200}
+              onChange={(event) => setChatText(event.target.value)}
+              placeholder="Try to bait the Gambiteer..."
+            />
+            <button type="submit" disabled={!chatText.trim()}>
+              Send
+            </button>
+          </form>
+          <ul className="chat">
+            {match.chat.slice(-6).map((message) => (
+              <li key={message.id}>
+                <strong>{message.from}</strong> {message.text}
+              </li>
+            ))}
+          </ul>
 
           <h3>Pi Events</h3>
           <ul className="events">
