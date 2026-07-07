@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { BoardPiece, LegalMove, PublicMatchState } from "../../shared/types.js";
+import { startFx, type FxEngine } from "./fx.js";
+import { startSpaceBackground } from "./spaceBackground.js";
 
 const files = ["a", "b", "c", "d", "e", "f", "g", "h"];
 const ranks = [8, 7, 6, 5, 4, 3, 2, 1];
@@ -32,13 +34,85 @@ function statusText(match: PublicMatchState): string {
   return `${match.status}${match.inCheck ? " by check" : ""}`;
 }
 
+function squareCenter(square: string): { x: number; y: number } | null {
+  const el = document.querySelector(`.board [aria-label="${square}"]`);
+  if (!el) {
+    return null;
+  }
+  const rect = el.getBoundingClientRect();
+  return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+}
+
+type Theme = "space" | "classic";
+
+function initialTheme(): Theme {
+  try {
+    return localStorage.getItem("cfn-theme") === "classic" ? "classic" : "space";
+  } catch {
+    return "space";
+  }
+}
+
 export function App() {
   const [match, setMatch] = useState<PublicMatchState | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [chatText, setChatText] = useState("");
   const [chatExpanded, setChatExpanded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [theme, setTheme] = useState<Theme>(initialTheme);
   const chatLogRef = useRef<HTMLUListElement | null>(null);
+  const fxCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const bgCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const fxRef = useRef<FxEngine | null>(null);
+  const seenMoveCount = useRef<number | null>(null);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    try {
+      localStorage.setItem("cfn-theme", theme);
+    } catch {
+      // Private browsing or blocked storage; theme just won't persist.
+    }
+  }, [theme]);
+
+  useEffect(() => {
+    if (!fxCanvasRef.current) {
+      return;
+    }
+    const engine = startFx(fxCanvasRef.current);
+    fxRef.current = engine;
+    return () => {
+      fxRef.current = null;
+      engine.destroy();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (theme !== "space" || !bgCanvasRef.current) {
+      return;
+    }
+    return startSpaceBackground(bgCanvasRef.current);
+  }, [theme]);
+
+  useEffect(() => {
+    if (theme !== "space") {
+      return;
+    }
+    let lastX = -100;
+    let lastY = -100;
+    function onMove(event: MouseEvent) {
+      const dx = event.clientX - lastX;
+      const dy = event.clientY - lastY;
+      if (dx * dx + dy * dy < 64) {
+        return;
+      }
+      lastX = event.clientX;
+      lastY = event.clientY;
+      fxRef.current?.trail(event.clientX, event.clientY);
+    }
+    window.addEventListener("mousemove", onMove);
+    return () => window.removeEventListener("mousemove", onMove);
+  }, [theme]);
 
   useEffect(() => {
     void refresh();
@@ -65,6 +139,39 @@ export function App() {
     }
     return match.legalMoves.filter((move) => move.from === selected);
   }, [match, selected]);
+
+  const checkedKingSquare = useMemo(() => {
+    if (!match || !match.inCheck) {
+      return null;
+    }
+    return (
+      match.board.find((piece) => piece.type === "k" && piece.color === match.turn)?.square ?? null
+    );
+  }, [match]);
+
+  useEffect(() => {
+    if (!match) {
+      return;
+    }
+    const count = match.moveHistory.length;
+    const previous = seenMoveCount.current;
+    seenMoveCount.current = count;
+    if (previous === null || count !== previous + 1) {
+      return;
+    }
+    const move = match.moveHistory[count - 1];
+    const from = squareCenter(move.from);
+    const to = squareCenter(move.to);
+    const fx = fxRef.current;
+    if (!from || !to || !fx) {
+      return;
+    }
+    const capture = move.san.includes("x");
+    const hue = move.color === "white" ? 190 : 335;
+    fx.laser(from.x, from.y, to.x, to.y, hue, () => {
+      fx.explosion(to.x, to.y, capture ? 1.15 : 0.3);
+    });
+  }, [match]);
 
   async function refresh() {
     const response = await fetch("/api/match");
@@ -126,11 +233,25 @@ export function App() {
     setSelected(hasLegalMove ? square : null);
   }
 
+  const backdrop = (
+    <>
+      {theme === "space" && <canvas ref={bgCanvasRef} className="space-bg" aria-hidden="true" />}
+      <canvas ref={fxCanvasRef} className="fx-layer" aria-hidden="true" />
+    </>
+  );
+
   if (!match) {
-    return <main className="app">Loading chess board...</main>;
+    return (
+      <>
+        {backdrop}
+        <main className="app">Loading chess board...</main>
+      </>
+    );
   }
 
   return (
+    <>
+    {backdrop}
     <main className="app">
       <section className="hero">
         <div>
@@ -141,7 +262,17 @@ export function App() {
             when it is Black's turn.
           </p>
         </div>
-        <button onClick={reset}>Reset match</button>
+        <div className="hero-actions">
+          <button
+            type="button"
+            className="theme-toggle"
+            onClick={() => setTheme((current) => (current === "space" ? "classic" : "space"))}
+            aria-pressed={theme === "space"}
+          >
+            {theme === "space" ? "☀️ Classic mode" : "🚀 Space mode"}
+          </button>
+          <button onClick={reset}>Reset match</button>
+        </div>
       </section>
 
       <section className="layout">
@@ -165,17 +296,31 @@ export function App() {
               const piece = pieceAt(match.board, square);
               const legalTarget = legalFromSelected.some((move) => move.to === square);
               const isSelected = selected === square;
+              const inCheck = checkedKingSquare === square;
               return (
                 <button
                   key={square}
                   className={`square ${(rank + files.indexOf(file)) % 2 === 0 ? "light" : "dark"}${
                     isSelected ? " selected" : ""
-                  }${legalTarget ? " legal" : ""}`}
+                  }${legalTarget ? " legal" : ""}${inCheck ? " in-check" : ""}`}
                   onClick={() => onSquareClick(square)}
                   aria-label={square}
                 >
-                  <span className="piece">{piece ? pieceGlyph[`${piece.color}${piece.type}`] : ""}</span>
+                  <span className={`piece${piece ? ` ${piece.color}` : ""}`}>
+                    {piece ? pieceGlyph[`${piece.color}${piece.type}`] : ""}
+                  </span>
                   <span className="coord">{square}</span>
+                  {inCheck && (
+                    <svg className="crosshair" viewBox="0 0 100 100" aria-hidden="true">
+                      <circle className="ch-outer" cx="50" cy="50" r="41" />
+                      <circle className="ch-inner" cx="50" cy="50" r="28" />
+                      <line x1="50" y1="1" x2="50" y2="18" />
+                      <line x1="50" y1="82" x2="50" y2="99" />
+                      <line x1="1" y1="50" x2="18" y2="50" />
+                      <line x1="82" y1="50" x2="99" y2="50" />
+                      <circle className="ch-dot" cx="50" cy="50" r="2.5" />
+                    </svg>
+                  )}
                 </button>
               );
             })
@@ -233,5 +378,6 @@ export function App() {
         </form>
       </section>
     </main>
+    </>
   );
 }
