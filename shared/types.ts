@@ -46,6 +46,7 @@ export interface AiEvent {
     | "tool_call"
     | "tool_result"
     | "move"
+    | "chat"
     | "fallback"
     | "error"
     | "done";

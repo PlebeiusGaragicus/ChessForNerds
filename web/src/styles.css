@@ -57,9 +57,10 @@ button {
 
 .layout {
   display: grid;
-  grid-template-columns: minmax(320px, 640px) minmax(280px, 1fr);
+  grid-template-columns: minmax(200px, 260px) minmax(320px, 640px) minmax(240px, 1fr);
   gap: 28px;
   align-items: start;
+  margin-bottom: 28px;
 }
 
 .board {
@@ -146,9 +147,13 @@ button {
   display: grid;
   gap: 8px;
   max-height: 260px;
-  margin: 0 0 24px;
+  margin: 0;
   padding-left: 22px;
   overflow: auto;
+}
+
+.history-panel .history {
+  max-height: min(560px, 60vh);
 }
 
 .quip {
@@ -169,13 +174,51 @@ button {
 }
 
 .chat {
-  max-height: 140px;
+  max-height: 52px;
+  padding-left: 0;
+  margin-bottom: 10px;
+  list-style: none;
+  transition: max-height 0.2s ease;
+}
+
+.chat-dock.expanded .chat {
+  max-height: 240px;
+}
+
+.chat-empty {
+  opacity: 0.6;
+  font-style: italic;
+}
+
+.chat-dock {
+  position: sticky;
+  bottom: 12px;
+}
+
+.chat-dock-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.chat-dock-header h3 {
+  margin: 0;
+}
+
+.chat-toggle {
+  border: 1px solid rgb(17 24 39 / 18%);
+  border-radius: 999px;
+  padding: 4px 12px;
+  background: white;
+  font-size: 0.8rem;
+  cursor: pointer;
 }
 
 .chat-form {
   display: flex;
   gap: 8px;
-  margin-bottom: 12px;
 }
 
 .chat-form input {
@@ -222,5 +265,21 @@ button {
 
   .hero {
     display: grid;
+  }
+
+  .layout {
+    grid-template-areas: "board" "history" "status";
+  }
+
+  .board {
+    grid-area: board;
+  }
+
+  .history-panel {
+    grid-area: history;
+  }
+
+  .status-panel {
+    grid-area: status;
   }
 }

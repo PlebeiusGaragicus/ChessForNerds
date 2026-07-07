@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { BoardPiece, LegalMove, PublicMatchState } from "../../shared/types.js";
 
 const files = ["a", "b", "c", "d", "e", "f", "g", "h"];
@@ -36,7 +36,9 @@ export function App() {
   const [match, setMatch] = useState<PublicMatchState | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [chatText, setChatText] = useState("");
+  const [chatExpanded, setChatExpanded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const chatLogRef = useRef<HTMLUListElement | null>(null);
 
   useEffect(() => {
     void refresh();
@@ -49,6 +51,13 @@ export function App() {
     });
     return () => events.close();
   }, []);
+
+  useEffect(() => {
+    const log = chatLogRef.current;
+    if (log) {
+      log.scrollTop = log.scrollHeight;
+    }
+  }, [match?.chat.length, chatExpanded]);
 
   const legalFromSelected = useMemo(() => {
     if (!match || !selected) {
@@ -136,6 +145,19 @@ export function App() {
       </section>
 
       <section className="layout">
+        <aside className="panel history-panel" aria-label="Move history">
+          <h3>Move History</h3>
+          <ol className="history">
+            {match.moveHistory.map((move) => (
+              <li key={move.id}>
+                <strong>{move.color}</strong> {move.san}
+                {move.quip ? <span className="quip"> “{move.quip}”</span> : null}
+                {move.fallback ? <span className="fallback"> fallback</span> : null}
+              </li>
+            ))}
+          </ol>
+        </aside>
+
         <div className="board" aria-label="Chess board">
           {ranks.map((rank) =>
             files.map((file) => {
@@ -160,43 +182,12 @@ export function App() {
           )}
         </div>
 
-        <aside className="panel">
+        <aside className="panel status-panel" aria-label="AI status">
           <h2>{statusText(match)}</h2>
           {match.aiThinking && <p className="thinking">Pi is thinking...</p>}
           {error && <p className="error">{error}</p>}
 
-          <h3>Move History</h3>
-          <ol className="history">
-            {match.moveHistory.map((move) => (
-              <li key={move.id}>
-                <strong>{move.color}</strong> {move.san}
-                {move.quip ? <span className="quip"> “{move.quip}”</span> : null}
-                {move.fallback ? <span className="fallback"> fallback</span> : null}
-              </li>
-            ))}
-          </ol>
-
-          <h3>Table Talk</h3>
-          <form className="chat-form" onSubmit={submitChat}>
-            <input
-              value={chatText}
-              maxLength={200}
-              onChange={(event) => setChatText(event.target.value)}
-              placeholder="Try to bait the Gambiteer..."
-            />
-            <button type="submit" disabled={!chatText.trim()}>
-              Send
-            </button>
-          </form>
-          <ul className="chat">
-            {match.chat.slice(-6).map((message) => (
-              <li key={message.id}>
-                <strong>{message.from}</strong> {message.text}
-              </li>
-            ))}
-          </ul>
-
-          <h3>Pi Events</h3>
+          <h3>Pi Status</h3>
           <ul className="events">
             {match.aiEvents.slice(-8).map((event) => (
               <li key={event.id}>
@@ -205,6 +196,41 @@ export function App() {
             ))}
           </ul>
         </aside>
+      </section>
+
+      <section className={`chat-dock panel${chatExpanded ? " expanded" : ""}`} aria-label="Table talk">
+        <div className="chat-dock-header">
+          <h3>Table Talk</h3>
+          <button
+            type="button"
+            className="chat-toggle"
+            onClick={() => setChatExpanded((open) => !open)}
+            aria-expanded={chatExpanded}
+          >
+            {chatExpanded ? "Collapse" : `Expand (${match.chat.length})`}
+          </button>
+        </div>
+        <ul className="chat" ref={chatLogRef}>
+          {(chatExpanded ? match.chat : match.chat.slice(-1)).map((message) => (
+            <li key={message.id}>
+              <strong>{message.from}</strong> {message.text}
+            </li>
+          ))}
+          {match.chat.length === 0 && (
+            <li className="chat-empty">No table talk yet. Try to bait the Gambiteer.</li>
+          )}
+        </ul>
+        <form className="chat-form" onSubmit={submitChat}>
+          <input
+            value={chatText}
+            maxLength={200}
+            onChange={(event) => setChatText(event.target.value)}
+            placeholder="Try to bait the Gambiteer..."
+          />
+          <button type="submit" disabled={!chatText.trim()}>
+            Send
+          </button>
+        </form>
       </section>
     </main>
   );

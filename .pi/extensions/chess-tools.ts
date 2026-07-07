@@ -67,6 +67,22 @@ const tools = {
           body: JSON.stringify({ moveId: params.moveId, quip: params.quip })
         })
       )
+  },
+  send_chat: {
+    name: "send_chat",
+    label: "Send Chat",
+    description:
+      "Say something in-character to your opponent. Keep it under 200 characters. Chat never changes the game state.",
+    parameters: Type.Object({
+      message: Type.String({ maxLength: 200 })
+    }),
+    execute: async (_toolCallId: string, params: { message: string }) =>
+      textResult(
+        await request("/api/ai/chat", {
+          method: "POST",
+          body: JSON.stringify({ message: params.message })
+        })
+      )
   }
 };
 

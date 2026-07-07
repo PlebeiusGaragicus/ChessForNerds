@@ -14,7 +14,7 @@ export class EventHub {
   }
 
   publishMatch(state: PublicMatchState): void {
-    this.publish("match", state);
+    this.publish("match", { ...state, aiEvents: this.getAiEvents() });
   }
 
   publishAi(type: AiEvent["type"], message: string): AiEvent {

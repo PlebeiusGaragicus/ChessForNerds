@@ -60,6 +60,7 @@ export function createMatchRouter(service: ChessService, events: EventHub, ai: A
       service.appendChat("human", text);
       const state = stateWithEvents(service, events);
       events.publishMatch(state);
+      ai.maybeReplyToChat();
       res.json(state);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

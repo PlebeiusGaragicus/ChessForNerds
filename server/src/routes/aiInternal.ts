@@ -67,5 +67,23 @@ export function createAiInternalRouter(
     }
   });
 
+  router.post("/chat", (req, res) => {
+    try {
+      ai.tokens.validate(bearerToken(req.header("authorization")), "send_chat");
+      const { message } = req.body as { message?: string };
+      if (!message) {
+        res.status(400).json({ error: "message is required." });
+        return;
+      }
+      const chat = service.appendChat("pi", message);
+      events.publishAi("chat", `Pi says: ${chat.text}`);
+      events.publishMatch(service.getPublicState());
+      res.json({ ok: true, message: chat });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      res.status(401).json({ error: message });
+    }
+  });
+
   return router;
 }
