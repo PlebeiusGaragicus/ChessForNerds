@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { BoardPiece, LegalMove, PublicMatchState } from "../../shared/types.js";
 import { startFx, type FxEngine } from "./fx.js";
 import { startSpaceBackground } from "./spaceBackground.js";
+import { buildHistoryBoards } from "./replay.js";
 
 const files = ["a", "b", "c", "d", "e", "f", "g", "h"];
 const ranks = [8, 7, 6, 5, 4, 3, 2, 1];
@@ -45,6 +46,10 @@ function squareCenter(square: string): { x: number; y: number } | null {
 
 type Theme = "space" | "classic";
 
+type FeedItem =
+  | { kind: "event"; id: string; at: string; type: string; text: string }
+  | { kind: "chat"; id: string; at: string; from: "human" | "pi"; text: string };
+
 function initialTheme(): Theme {
   try {
     return localStorage.getItem("cfn-theme") === "classic" ? "classic" : "space";
@@ -57,9 +62,9 @@ export function App() {
   const [match, setMatch] = useState<PublicMatchState | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [chatText, setChatText] = useState("");
-  const [chatExpanded, setChatExpanded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [theme, setTheme] = useState<Theme>(initialTheme);
+  const [hoverPly, setHoverPly] = useState<number | null>(null);
   const chatLogRef = useRef<HTMLUListElement | null>(null);
   const fxCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const bgCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -126,12 +131,38 @@ export function App() {
     return () => events.close();
   }, []);
 
+  const feed = useMemo<FeedItem[]>(() => {
+    if (!match) {
+      return [];
+    }
+    // Chat lands in the feed as proper messages; thinking/tool/done chatter is
+    // noise (the live "Pi is thinking..." indicator covers it).
+    const meaningful = new Set(["move", "fallback", "error"]);
+    const events = match.aiEvents
+      .filter((event) => meaningful.has(event.type))
+      .map<FeedItem>((event) => ({
+        kind: "event",
+        id: event.id,
+        at: event.createdAt,
+        type: event.type,
+        text: event.message
+      }));
+    const chats = match.chat.map<FeedItem>((message) => ({
+      kind: "chat",
+      id: message.id,
+      at: message.createdAt,
+      from: message.from,
+      text: message.text
+    }));
+    return [...events, ...chats].sort((a, b) => a.at.localeCompare(b.at));
+  }, [match]);
+
   useEffect(() => {
     const log = chatLogRef.current;
     if (log) {
       log.scrollTop = log.scrollHeight;
     }
-  }, [match?.chat.length, chatExpanded]);
+  }, [feed.length]);
 
   const legalFromSelected = useMemo(() => {
     if (!match || !selected) {
@@ -139,6 +170,23 @@ export function App() {
     }
     return match.legalMoves.filter((move) => move.from === selected);
   }, [match, selected]);
+
+  const historyBoards = useMemo(
+    () => (match ? buildHistoryBoards(match.moveHistory) : []),
+    [match]
+  );
+
+  // Drop any replay state that no longer exists (e.g. after a reset).
+  useEffect(() => {
+    if (hoverPly !== null && hoverPly >= historyBoards.length) {
+      setHoverPly(null);
+    }
+  }, [historyBoards.length, hoverPly]);
+
+  const shownPly = hoverPly;
+  const isReplaying =
+    shownPly !== null && shownPly < historyBoards.length - 1 && historyBoards.length > 0;
+  const displayedBoard = isReplaying && match ? historyBoards[shownPly] : match?.board ?? [];
 
   const checkedKingSquare = useMemo(() => {
     if (!match || !match.inCheck) {
@@ -156,7 +204,7 @@ export function App() {
     const count = match.moveHistory.length;
     const previous = seenMoveCount.current;
     seenMoveCount.current = count;
-    if (previous === null || count !== previous + 1) {
+    if (previous === null || count !== previous + 1 || isReplaying) {
       return;
     }
     const move = match.moveHistory[count - 1];
@@ -179,6 +227,9 @@ export function App() {
   }
 
   async function reset() {
+    if (!window.confirm("Reset the match and start over?")) {
+      return;
+    }
     setSelected(null);
     setError(null);
     const response = await fetch("/api/match/reset", { method: "POST" });
@@ -219,6 +270,10 @@ export function App() {
   }
 
   function onSquareClick(square: string) {
+    if (isReplaying) {
+      setHoverPly(null);
+      return;
+    }
     if (!match || match.turn !== match.humanColor || match.status !== "active") {
       return;
     }
@@ -252,16 +307,36 @@ export function App() {
   return (
     <>
     {backdrop}
+    {historyBoards.length > 1 && (
+      <nav
+        className="timeline"
+        aria-label="Game replay timeline"
+        onMouseLeave={() => setHoverPly(null)}
+      >
+        {historyBoards.map((_, ply) => {
+          const isLast = ply === historyBoards.length - 1;
+          const record = ply > 0 ? match.moveHistory[ply - 1] : null;
+          const label = isLast
+            ? "Live"
+            : record
+              ? `${Math.ceil(ply / 2)}. ${record.color === "black" ? "… " : ""}${record.san}`
+              : "Start";
+          return (
+            <span
+              key={ply}
+              title={label}
+              className={`tick${shownPly === ply ? " active" : ""}${
+                isLast ? " live" : ""
+              }${record ? ` ${record.color}` : ""}`}
+              onMouseEnter={() => setHoverPly(ply)}
+            />
+          );
+        })}
+      </nav>
+    )}
     <main className="app">
-      <section className="hero">
-        <div>
-          <p className="eyebrow">ChessForNerds</p>
-          <h1>Play chess against pi</h1>
-          <p>
-            The server owns the rules. Pi only sees legal move IDs and submits one move
-            when it is Black's turn.
-          </p>
-        </div>
+      <header className="topbar">
+        <span className="eyebrow">ChessForNerds</span>
         <div className="hero-actions">
           <button
             type="button"
@@ -269,34 +344,31 @@ export function App() {
             onClick={() => setTheme((current) => (current === "space" ? "classic" : "space"))}
             aria-pressed={theme === "space"}
           >
-            {theme === "space" ? "☀️ Classic mode" : "🚀 Space mode"}
+            {theme === "space" ? "😴 Boring mode" : "🚀 Space mode"}
           </button>
           <button onClick={reset}>Reset match</button>
         </div>
-      </section>
+      </header>
 
       <section className="layout">
-        <aside className="panel history-panel" aria-label="Move history">
-          <h3>Move History</h3>
-          <ol className="history">
-            {match.moveHistory.map((move) => (
-              <li key={move.id}>
-                <strong>{move.color}</strong> {move.san}
-                {move.quip ? <span className="quip"> “{move.quip}”</span> : null}
-                {move.fallback ? <span className="fallback"> fallback</span> : null}
-              </li>
-            ))}
-          </ol>
-        </aside>
-
-        <div className="board" aria-label="Chess board">
+        <div className={`board${isReplaying ? " replaying" : ""}`} aria-label="Chess board">
+          {isReplaying && shownPly !== null && (
+            <div className="replay-chip" aria-live="polite">
+              {shownPly === 0
+                ? "Replay · start position"
+                : `Replay · ${match.moveHistory[shownPly - 1].color} ${
+                    match.moveHistory[shownPly - 1].san
+                  } (${shownPly}/${historyBoards.length - 1})`}
+            </div>
+          )}
           {ranks.map((rank) =>
             files.map((file) => {
               const square = `${file}${rank}`;
-              const piece = pieceAt(match.board, square);
-              const legalTarget = legalFromSelected.some((move) => move.to === square);
-              const isSelected = selected === square;
-              const inCheck = checkedKingSquare === square;
+              const piece = pieceAt(displayedBoard, square);
+              const legalTarget =
+                !isReplaying && legalFromSelected.some((move) => move.to === square);
+              const isSelected = !isReplaying && selected === square;
+              const inCheck = !isReplaying && checkedKingSquare === square;
               return (
                 <button
                   key={square}
@@ -327,55 +399,39 @@ export function App() {
           )}
         </div>
 
-        <aside className="panel status-panel" aria-label="AI status">
+        <aside className="panel status-panel" aria-label="Game status and table talk">
           <h2>{statusText(match)}</h2>
           {match.aiThinking && <p className="thinking">Pi is thinking...</p>}
           {error && <p className="error">{error}</p>}
 
-          <h3>Pi Status</h3>
-          <ul className="events">
-            {match.aiEvents.slice(-8).map((event) => (
-              <li key={event.id}>
-                <span>{event.type}</span> {event.message}
-              </li>
-            ))}
+          <ul className="feed" ref={chatLogRef}>
+            {feed.map((item) =>
+              item.kind === "chat" ? (
+                <li key={item.id} className={`feed-chat ${item.from}`}>
+                  <strong>{item.from === "pi" ? "Pi" : "You"}</strong> {item.text}
+                </li>
+              ) : (
+                <li key={item.id} className="feed-event">
+                  <span>{item.type}</span> {item.text}
+                </li>
+              )
+            )}
+            {feed.length === 0 && (
+              <li className="chat-empty">No activity yet. Try to bait the Gambiteer.</li>
+            )}
           </ul>
+          <form className="chat-form" onSubmit={submitChat}>
+            <input
+              value={chatText}
+              maxLength={200}
+              onChange={(event) => setChatText(event.target.value)}
+              placeholder="Try to bait the Gambiteer..."
+            />
+            <button type="submit" disabled={!chatText.trim()}>
+              Send
+            </button>
+          </form>
         </aside>
-      </section>
-
-      <section className={`chat-dock panel${chatExpanded ? " expanded" : ""}`} aria-label="Table talk">
-        <div className="chat-dock-header">
-          <h3>Table Talk</h3>
-          <button
-            type="button"
-            className="chat-toggle"
-            onClick={() => setChatExpanded((open) => !open)}
-            aria-expanded={chatExpanded}
-          >
-            {chatExpanded ? "Collapse" : `Expand (${match.chat.length})`}
-          </button>
-        </div>
-        <ul className="chat" ref={chatLogRef}>
-          {(chatExpanded ? match.chat : match.chat.slice(-1)).map((message) => (
-            <li key={message.id}>
-              <strong>{message.from}</strong> {message.text}
-            </li>
-          ))}
-          {match.chat.length === 0 && (
-            <li className="chat-empty">No table talk yet. Try to bait the Gambiteer.</li>
-          )}
-        </ul>
-        <form className="chat-form" onSubmit={submitChat}>
-          <input
-            value={chatText}
-            maxLength={200}
-            onChange={(event) => setChatText(event.target.value)}
-            placeholder="Try to bait the Gambiteer..."
-          />
-          <button type="submit" disabled={!chatText.trim()}>
-            Send
-          </button>
-        </form>
       </section>
     </main>
     </>

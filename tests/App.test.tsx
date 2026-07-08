@@ -52,7 +52,7 @@ describe("App", () => {
   it("renders the chess board and status after loading state", async () => {
     render(<App />);
 
-    expect(await screen.findByText("Play chess against pi")).toBeInTheDocument();
+    expect(await screen.findByText("ChessForNerds")).toBeInTheDocument();
     expect(await screen.findByText("Your turn")).toBeInTheDocument();
     expect(screen.getByLabelText("e1")).toHaveTextContent("♔");
   });

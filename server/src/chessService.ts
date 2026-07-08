@@ -278,6 +278,11 @@ export class ChessService {
     if (this.currentTurn() === "white") {
       this.match.turnNumber += 1;
     }
+    // Move quips are Pi's table talk; surface them in the game chat rather
+    // than burying them in the move record. Only AI move paths pass a quip.
+    if (record.quip) {
+      this.appendChat("pi", record.quip);
+    }
     return record;
   }
 }

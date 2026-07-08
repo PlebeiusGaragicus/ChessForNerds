@@ -59,7 +59,7 @@ export function createAiInternalRouter(
       }
       token.usedSubmit = true;
       const move = service.applyMoveById(moveId, token.player, quip?.slice(0, 200));
-      events.publishAi("move", `Pi played ${move.san}${move.quip ? `: ${move.quip}` : ""}`);
+      events.publishAi("move", `Pi played ${move.san}.`);
       res.json({ ok: true, move });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
