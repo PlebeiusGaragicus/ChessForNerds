@@ -28,7 +28,6 @@ export interface MoveRecord extends LegalMove {
   color: PlayerColor;
   turnNumber: number;
   quip?: string;
-  fallback?: boolean;
 }
 
 export interface ChatMessage {
@@ -47,7 +46,6 @@ export interface AiEvent {
     | "tool_result"
     | "move"
     | "chat"
-    | "fallback"
     | "error"
     | "done";
   message: string;

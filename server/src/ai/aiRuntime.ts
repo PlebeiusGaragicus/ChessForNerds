@@ -4,12 +4,14 @@ import { runFakePiChat, runFakePiTurn } from "./fakeRunner.js";
 import { runRealPiChat, runRealPiTurn } from "./piRunner.js";
 import { TurnTokenStore } from "./tokenStore.js";
 
-const AI_TURN_TIMEOUT_MS = 30_000;
-const AI_CHAT_TIMEOUT_MS = 20_000;
+// Generous budgets: the model runs on consumer hardware and a cold load can
+// take minutes. If it still can't answer in time, the failure is surfaced
+// as-is — there is no fallback logic.
+const AI_TURN_TIMEOUT_MS = 10 * 60_000;
+const AI_CHAT_TIMEOUT_MS = 5 * 60_000;
 const FAKE_TURN_TOOLS = ["get_visible_state", "list_legal_moves", "submit_move"];
 const REAL_TURN_TOOLS = ["submit_move"];
 const CHAT_TOOLS = ["send_chat"];
-const FALLBACK_CHAT_LINE = "The Gambiteer studies the board in silence.";
 
 export class AiRuntime {
   private activeTurn: Promise<void> | null = null;
@@ -26,9 +28,15 @@ export class AiRuntime {
       return;
     }
 
-    this.activeTurn = this.playTurn().finally(() => {
-      this.activeTurn = null;
-    });
+    this.activeTurn = this.playTurn()
+      .catch((error) => {
+        // Never let a turn failure escape as an unhandled rejection.
+        const message = error instanceof Error ? error.message : String(error);
+        this.events.publishAi("error", `AI turn crashed: ${message}`);
+      })
+      .finally(() => {
+        this.activeTurn = null;
+      });
   }
 
   maybeReplyToChat(): void {
@@ -38,9 +46,14 @@ export class AiRuntime {
       return;
     }
 
-    this.activeChat = this.replyToChat().finally(() => {
-      this.activeChat = null;
-    });
+    this.activeChat = this.replyToChat()
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        this.events.publishAi("error", `AI chat crashed: ${message}`);
+      })
+      .finally(() => {
+        this.activeChat = null;
+      });
   }
 
   isThinking(): boolean {
@@ -85,8 +98,15 @@ export class AiRuntime {
       this.events.publishAi("done", "Pi turn completed.");
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      this.events.publishAi("fallback", `AI fallback applied: ${message}`);
-      this.service.applyFallbackMove(token.player);
+      // Revoke immediately so a still-running runner can't land a move after
+      // we've already reported the turn as failed.
+      this.tokens.revoke(token.token);
+      const afterMoveCount = this.service.getPublicState().moveHistory.length;
+      if (afterMoveCount > beforeMoveCount) {
+        this.events.publishAi("done", `Pi move arrived late (${message}); keeping it.`);
+      } else {
+        this.events.publishAi("error", `AI turn failed: ${message}`);
+      }
     } finally {
       this.tokens.revoke(token.token);
       this.service.setAiThinking(false);
@@ -119,8 +139,7 @@ export class AiRuntime {
       this.events.publishAi("done", "Pi chat reply delivered.");
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      this.events.publishAi("fallback", `AI chat fallback applied: ${message}`);
-      this.service.appendChat("pi", FALLBACK_CHAT_LINE);
+      this.events.publishAi("error", `AI chat failed: ${message}`);
     } finally {
       this.tokens.revoke(token.token);
       this.events.publishMatch(this.service.getPublicState());

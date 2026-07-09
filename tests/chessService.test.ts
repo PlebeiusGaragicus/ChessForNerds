@@ -34,15 +34,6 @@ describe("ChessService", () => {
     expect(() => service.applyMoveById("m999", "black")).toThrow(/current legal set/);
   });
 
-  it("marks deterministic fallback moves in history", () => {
-    const service = new ChessService();
-    service.applyHumanMove("e2", "e4");
-
-    const fallback = service.applyFallbackMove("black");
-    expect(fallback.fallback).toBe(true);
-    expect(service.getPublicState().moveHistory.at(-1)?.fallback).toBe(true);
-  });
-
   it("detects checkmate", () => {
     const service = new ChessService();
 

@@ -137,7 +137,7 @@ export function App() {
     }
     // Chat lands in the feed as proper messages; thinking/tool/done chatter is
     // noise (the live "Pi is thinking..." indicator covers it).
-    const meaningful = new Set(["move", "fallback", "error"]);
+    const meaningful = new Set(["move", "error"]);
     const events = match.aiEvents
       .filter((event) => meaningful.has(event.type))
       .map<FeedItem>((event) => ({
@@ -250,6 +250,12 @@ export function App() {
     }
     setSelected(null);
     setMatch(body as PublicMatchState);
+  }
+
+  async function retryAiTurn() {
+    setError(null);
+    const response = await fetch("/api/match/retry", { method: "POST" });
+    setMatch((await response.json()) as PublicMatchState);
   }
 
   async function submitChat(event: React.FormEvent<HTMLFormElement>) {
@@ -403,6 +409,13 @@ export function App() {
           <h2>{statusText(match)}</h2>
           {match.aiThinking && <p className="thinking">Pi is thinking...</p>}
           {error && <p className="error">{error}</p>}
+          {match.status === "active" &&
+            match.turn === match.aiColor &&
+            !match.aiThinking && (
+              <button type="button" className="retry-ai" onClick={() => void retryAiTurn()}>
+                Wake the Gambiteer (retry AI move)
+              </button>
+            )}
 
           <ul className="feed" ref={chatLogRef}>
             {feed.map((item) =>

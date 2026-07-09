@@ -445,6 +445,11 @@ button {
   background: var(--error-bg);
 }
 
+.retry-ai {
+  align-self: flex-start;
+  font-weight: 700;
+}
+
 /* Unified status + chat feed */
 .feed {
   display: flex;

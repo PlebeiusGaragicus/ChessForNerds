@@ -49,6 +49,13 @@ export function createMatchRouter(service: ChessService, events: EventHub, ai: A
     }
   });
 
+  // Re-arm the AI after a failed turn. No-op if it isn't the AI's turn or a
+  // run is already in flight.
+  router.post("/retry", (_req, res) => {
+    ai.maybePlayTurn();
+    res.json(stateWithEvents(service, events));
+  });
+
   router.post("/chat", (req, res) => {
     const { text } = req.body as { text?: string };
     if (!text) {

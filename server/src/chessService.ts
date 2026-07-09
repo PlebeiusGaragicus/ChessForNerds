@@ -165,17 +165,6 @@ export class ChessService {
     );
   }
 
-  applyFallbackMove(color: PlayerColor): MoveRecord {
-    const legalMoves = this.listLegalMoves();
-    const fallback = legalMoves[0];
-    if (!fallback) {
-      throw new Error("fallback_failed: no legal moves are available.");
-    }
-    const move = this.applyMoveById(fallback.id, color, "I hesitate, then move.");
-    move.fallback = true;
-    return move;
-  }
-
   appendChat(from: ChatMessage["from"], text: string): ChatMessage {
     const cleaned = text.replace(/[^\S\r\n]+/g, " ").replace(/[\u0000-\u001f\u007f]/g, "").trim();
     if (!cleaned) {
